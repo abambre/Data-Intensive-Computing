@@ -18,8 +18,11 @@
 
 package org.apache.hadoop.yarn.server.resourcemanager;
 
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.PrintWriter;
+import java.io.UnsupportedEncodingException;
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
@@ -103,6 +106,7 @@ import com.google.common.annotations.VisibleForTesting;
 public class ApplicationMasterService extends AbstractService implements
     ApplicationMasterProtocol {
   private static final Log LOG = LogFactory.getLog(ApplicationMasterService.class);
+  private static final int SPEC_THRESHOLD = 1;
   private final AMLivelinessMonitor amLivelinessMonitor;
   private YarnScheduler rScheduler;
   private InetSocketAddress bindAddress;
@@ -112,7 +116,8 @@ public class ApplicationMasterService extends AbstractService implements
   private final ConcurrentMap<ApplicationAttemptId, AllocateResponseLock> responseMap =
       new ConcurrentHashMap<ApplicationAttemptId, AllocateResponseLock>();
   private final RMContext rmContext;
-
+  ConcurrentHashMap<String, Integer> speculationCountMap = new ConcurrentHashMap<String, Integer> ();
+  
   public ApplicationMasterService(RMContext rmContext, YarnScheduler scheduler) {
     super(ApplicationMasterService.class.getName());
     this.amLivelinessMonitor = rmContext.getAMLivelinessMonitor();
@@ -414,6 +419,143 @@ public class ApplicationMasterService extends AbstractService implements
     return hasApplicationMasterRegistered;
   }
 
+  
+  boolean checkSpeculativeMap(String strHost)
+  {
+	  int iCount;
+	  
+	  LOG.info("\nInside the checkSpeculativeMap. Paramater got: " + strHost + "\n");
+	  
+	  if(speculationCountMap.get(strHost) != null && speculationCountMap.get(strHost) == -1)
+	  {
+		  LOG.info("Will return false as it is already being brought down \n\n");
+		  return false;
+	  }
+	  else if(speculationCountMap.containsKey(strHost))
+	  {
+		  LOG.info("Inside contains key \n\n\n");
+		  iCount = speculationCountMap.get(strHost);
+		  iCount++;
+		  speculationCountMap.replace(strHost, iCount);
+	  }
+	  LOG.info("\n\n\n After else if block. putting in map for the first time");
+	  speculationCountMap.putIfAbsent(strHost, 1);
+	  LOG.info("\n\n\n Before checking threshold");
+	  if(speculationCountMap.get(strHost) == SPEC_THRESHOLD)
+	  {
+		  speculationCountMap.replace(strHost, -1);
+		  LOG.info("\n\n\n Will return true \n\n\n");
+		  return true;
+	  }
+	  LOG.info("This will return false \n\n\n");
+	  return false;
+  }
+
+  @SuppressWarnings("finally")
+public  boolean createDecommissionScript()
+	{
+	   LOG.info("\n\n\n Inside the createcommissionScript \n\n\n");
+	   
+		PrintWriter writer = null;
+		boolean retVal = true;
+		try 
+		{
+		 writer = new PrintWriter("/usr/local/hadoop/logs/decommission.sh", "UTF-8");
+                    writer.println("#!/bin/bash");
+                    writer.println("echo inside decommission script creation");
+                    writer.println("sed -i 's\\</configuration>\\\\g' /usr/local/hadoop/etc/hadoop/hdfs-site.xml");
+                    writer.println("sed -i 's\\</configuration>\\\\g' /usr/local/hadoop/etc/hadoop/mapred-site.xml");
+                    writer.println("echo \"<property>\" >> /usr/local/hadoop/etc/hadoop/hdfs-site.xml");
+                    writer.println("echo \"<name>dfs.hosts.exclude</name>\" >> /usr/local/hadoop/etc/hadoop/hdfs-site.xml");
+                    writer.println("echo \"<value>/usr/local/hadoop/etc/hadoop/dfs.exclude</value>\" >> /usr/local/hadoop/etc/hadoop/hdfs-site.xml");
+                    writer.println("echo \"</property>\" >> /usr/local/hadoop/etc/hadoop/hdfs-site.xml");
+                    writer.println("echo \"</configuration>\" >> /usr/local/hadoop/etc/hadoop/hdfs-site.xml");
+                    writer.println("echo \"<property>\" >> /usr/local/hadoop/etc/hadoop/mapred-site.xml");
+                    writer.println("echo \"<name>mapred.hosts.exclude</name>\" >> /usr/local/hadoop/etc/hadoop/mapred-site.xml");
+                    writer.println("echo \"<value>/usr/local/hadoop/etc/hadoop/mapred.exclude</value>\" >> /usr/local/hadoop/etc/hadoop/mapred-site.xml");
+                    writer.println("echo \"</property>\" >> /usr/local/hadoop/etc/hadoop/mapred-site.xml");
+                    writer.println("echo \"</configuration>\" >> /usr/local/hadoop/etc/hadoop/mapred-site.xml");
+                    writer.println("echo $1 >>/usr/local/hadoop/etc/hadoop/dfs.exclude");
+                    writer.println("echo $1 >>/usr/local/hadoop/etc/hadoop/mapred.exclude");
+
+                    writer.println("chown sbhatia3:hadoop /usr/local/hadoop/etc/hadoop/dfs.exclude");
+                    writer.println("chown sbhatia3:hadoop /usr/local/hadoop/etc/hadoop/mapred.exclude");
+
+                    writer.println("chmod +rwx /usr/local/hadoop/etc/hadoop/dfs.exclude");
+                    writer.println("chmod +rwx /usr/local/hadoop/etc/hadoop/mapred.exclude");
+
+                    writer.println("hdfs dfsadmin -refreshNodes");
+                    writer.println("sh /usr/local/hadoop/logs/bringNewNodeUp.sh"); //TODO: Put the contents of the shell script in this method
+                    writer.println("hdfs balancer");
+                    writer.println("echo script ended");
+					
+		} 
+		catch (FileNotFoundException e) 
+		{
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+			retVal = false;
+		}
+		catch (UnsupportedEncodingException e) 
+		{
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+			retVal = false;
+		}
+		finally
+		{
+			if(writer != null)
+				writer.close();
+			
+			return retVal;
+		}
+	}
+  
+ void execSpeculativeEvent(String host, int port) 
+ {
+	LOG.info("\n\nInside the execSpeculativeEvent in the master Node:" + host +"port:" + port +"\n\n");
+		
+	if(createDecommissionScript())
+		LOG.info("Created Decomiision Script \n\n\n\n");
+	else
+		LOG.info("Failed to create script \n\n\n");
+		
+	//ProcessBuilder pb = new ProcessBuilder("sudo", "/usr/local/hadoop/logs/decommission.sh", host);
+ 
+    LOG.info("\n before calling Process Builder-code for exe commented \n");
+ 	try
+ 	{
+ 	  
+      //Process p = pb.start();
+ 		
+      Process p = Runtime.getRuntime().exec(new String[]{"sudo", "chown", "sbhatia3:hadoop", "/usr/local/hadoop/logs/decommission.sh"});
+      if(p.waitFor() == 0)
+      {
+      	LOG.info("Changed ownership: Success \n\n\n");
+      	Process newProc = 	Runtime.getRuntime().exec(new String[]{"bash", "/usr/local/hadoop/logs/decommission.sh", host});
+      	if(newProc.waitFor() == 0)
+      	{
+      		LOG.info("Executed actual script successfully \n\n\n");
+      	}
+      	else
+      	{
+      		LOG.info("Failed in execution of actual script \n\n\n");
+      	}
+      }
+      else
+      {
+      		LOG.info("Failed to change ownership \n\n\n");      
+      }
+      
+      
+      LOG.info("\n\nAfter calling wait for the process \n\n");
+ 	}
+ 	catch (Exception e)
+ 	{
+      LOG.info(e.getMessage());
+ 	}
+ }
+  
   @Override
   public AllocateResponse allocate(AllocateRequest request)
       throws YarnException, IOException {
@@ -448,7 +590,26 @@ public class ApplicationMasterService extends AbstractService implements
           "ApplicationMasterService", message, applicationId, appAttemptId);
         throw new ApplicationMasterNotRegisteredException(message);
       }
-
+      
+      LOG.info("\n\n\n ####Before calling execute speculative event in application master#### \n\n\n");
+      LOG.info(" Variables : Host :"+request.getSpeculativeNode()+"Port :" + request.getSpeculativeNodePort());
+      if("".compareTo(request.getSpeculativeNode()) == 0)
+      {
+    	  LOG.info("Empty String received \n\n");
+      }
+      else if("".compareTo(request.getSpeculativeNode()) != 0 && checkSpeculativeMap(request.getSpeculativeNode()))
+      {
+    	  LOG.info("\n\nInside the ifcondition before calling execSpeculativeEvent\n\n");
+    	  execSpeculativeEvent(request.getSpeculativeNode(),request.getSpeculativeNodePort());
+    	  LOG.info("\n\n\n ####After calling script in application master#### \n\n\n");
+      }
+      else
+      {
+    	  LOG.info("------Normal call----");
+      }
+      //LOG.info("\n\n\n ####After calling script in application master#### \n\n\n");
+      
+      //LOG.info("\n\n\n ###########>>> printing new field speculative info ###########\n\n\n"+ request.getSpeculativeInd());  
       if ((request.getResponseId() + 1) == lastResponse.getResponseId()) {
         /* old heartbeat */
         return lastResponse;

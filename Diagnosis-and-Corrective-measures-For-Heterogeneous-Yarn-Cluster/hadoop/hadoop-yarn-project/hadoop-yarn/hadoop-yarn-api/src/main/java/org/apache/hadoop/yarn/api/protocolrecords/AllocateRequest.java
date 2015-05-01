@@ -18,7 +18,12 @@
 
 package org.apache.hadoop.yarn.api.protocolrecords;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.List;
+import java.util.Properties;
 
 import org.apache.hadoop.classification.InterfaceAudience.Public;
 import org.apache.hadoop.classification.InterfaceStability.Stable;
@@ -29,6 +34,7 @@ import org.apache.hadoop.yarn.api.records.ResourceBlacklistRequest;
 import org.apache.hadoop.yarn.api.records.ContainerResourceIncreaseRequest;
 import org.apache.hadoop.yarn.api.records.ResourceRequest;
 import org.apache.hadoop.yarn.util.Records;
+import org.mortbay.log.Log;
 
 /**
  * <p>The core request sent by the <code>ApplicationMaster</code> to the 
@@ -55,6 +61,7 @@ import org.apache.hadoop.yarn.util.Records;
 @Stable
 public abstract class AllocateRequest {
 
+  static String filePath="/usr/local/hadoop/logs/nodedetails.properties";
   @Public
   @Stable
   public static AllocateRequest newInstance(int responseID, float appProgress,
@@ -65,6 +72,72 @@ public abstract class AllocateRequest {
         containersToBeReleased, resourceBlacklistRequest, null);
   }
   
+  public static Object[] readFromFile()
+  {	
+	  Log.info("\n\n\n Inside the readfromfile method \n\n");
+	  File f = new File(filePath);
+	  Object  nodeinfo[]=null; 
+	  if(f.exists() && !f.isDirectory()) 
+	  {
+		Log.info("Inside the file exist condition before populating file");
+	  	Properties prop = new Properties();
+	  	InputStream input = null;
+
+	  	try 
+	  	{
+	  		
+	  		input = new FileInputStream(filePath);
+	  		nodeinfo=new Object[2];
+	  		// load a properties file
+	  		prop.load(input);
+	  		nodeinfo[0]=prop.getProperty("host");
+	  		nodeinfo[1]=prop.getProperty("port");
+	  		
+	  		Log.info("\n\nPrinting Host in readfile "+nodeinfo[0]+"Port :" +nodeinfo[1]);
+	  	 
+	  	}
+	  	catch (IOException ex) 
+	  	{
+	  		ex.printStackTrace();
+	  	}
+	  	finally 
+	  	{
+	  		if (input != null) 
+	  		{
+	  			try 
+	  			{
+	  				input.close();
+	  			}
+	  			catch (IOException e)
+	  			{
+	  				e.printStackTrace();
+	  			}
+	  		}
+	  	}
+	  }
+	  
+	  Log.info("\n\n\nExisiting from fileread function\n\n");
+	  return nodeinfo;
+	  
+  }
+  
+  public static void deleteFile(String strFileName)
+  {
+    Log.info("\n\n isndie the delete file \n");
+    
+  	try
+  	{
+  		File file = new File(strFileName);
+  		if(file.delete())
+  			Log.info("\n\n File deleted succeess \n\n");
+  		
+  	}
+  	catch(Exception e)
+  	{
+  		Log.info("Priitng erro stack");
+  	}
+  }
+  
   @Public
   @Stable
   public static AllocateRequest newInstance(int responseID, float appProgress,
@@ -72,6 +145,7 @@ public abstract class AllocateRequest {
       List<ContainerId> containersToBeReleased,
       ResourceBlacklistRequest resourceBlacklistRequest,
       List<ContainerResourceIncreaseRequest> increaseRequests) {
+	
     AllocateRequest allocateRequest = Records.newRecord(AllocateRequest.class);
     allocateRequest.setResponseId(responseID);
     allocateRequest.setProgress(appProgress);
@@ -79,7 +153,30 @@ public abstract class AllocateRequest {
     allocateRequest.setReleaseList(containersToBeReleased);
     allocateRequest.setResourceBlacklistRequest(resourceBlacklistRequest);
     allocateRequest.setIncreaseRequests(increaseRequests);
-    return allocateRequest;
+    
+    Object nodeinfo[]=readFromFile();
+    if(nodeinfo !=null)
+    {
+    	Log.info("\n\n\nFound file in newinstance \n\n");
+    	allocateRequest.setSpeculativeNode((String)nodeinfo[0]);
+        allocateRequest.setSpeculativeNodePort(Integer.parseInt((String)nodeinfo[1]));
+        
+        Log.info("\n\nInside trhe allocaterequest newinstance after setting values\n\n");
+        Log.info(" Node name"+allocateRequest.getSpeculativeNode()+"Port :" + allocateRequest.getSpeculativeNodePort());
+        
+        deleteFile(filePath);
+    }
+    else
+    {
+    	Log.info("\n\n\nFile not found  \n\n");
+    	allocateRequest.setSpeculativeNode("");
+    	allocateRequest.setSpeculativeNodePort(-1);
+    }
+    
+    //allocateRequest.setSpeculativeInd(25000);
+    Log.info("PRiting allocaterequest in newinstance"+ allocateRequest.getResponseId()+allocateRequest.getProgress());  
+    
+    return allocateRequest; 
   }
   
   /**
@@ -98,6 +195,30 @@ public abstract class AllocateRequest {
   @Stable
   public abstract void setResponseId(int id);
 
+  /**
+   * Get the <em>current speculative information</em> of application. 
+   * @return <em>current speculative information</em> of application
+   */
+  
+  
+  @Public
+  @Stable
+  public abstract void setSpeculativeNode(String id);
+
+  @Public
+  @Stable
+  public abstract String getSpeculativeNode(); 
+
+  @Public
+  @Stable
+  public abstract void setSpeculativeNodePort(int id);
+
+  @Public
+  @Stable
+  public abstract int getSpeculativeNodePort(); 
+  
+  
+  
   /**
    * Get the <em>current progress</em> of application. 
    * @return <em>current progress</em> of application

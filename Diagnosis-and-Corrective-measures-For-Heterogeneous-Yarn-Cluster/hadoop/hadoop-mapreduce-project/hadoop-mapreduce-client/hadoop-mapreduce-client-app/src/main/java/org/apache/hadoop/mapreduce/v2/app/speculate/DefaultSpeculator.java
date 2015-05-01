@@ -18,6 +18,12 @@
 
 package org.apache.hadoop.mapreduce.v2.app.speculate;
 
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.OutputStream;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.util.HashSet;
@@ -47,6 +53,7 @@ import org.apache.hadoop.mapreduce.v2.app.job.event.TaskAttemptStatusUpdateEvent
 import org.apache.hadoop.mapreduce.v2.app.job.event.TaskEvent;
 import org.apache.hadoop.mapreduce.v2.app.job.event.TaskEventType;
 import org.apache.hadoop.service.AbstractService;
+import org.apache.hadoop.yarn.api.records.NodeId;
 import org.apache.hadoop.yarn.event.EventHandler;
 import org.apache.hadoop.yarn.exceptions.YarnRuntimeException;
 import org.apache.hadoop.yarn.util.Clock;
@@ -107,6 +114,8 @@ public class DefaultSpeculator extends AbstractService implements
   private final Clock clock;
 
   private final EventHandler<TaskEvent> eventHandler;
+  
+  private NodeId speculatingNode;
 
   public DefaultSpeculator(Configuration conf, AppContext context) {
     this(conf, context, context.getClock());
@@ -371,6 +380,7 @@ public class DefaultSpeculator extends AbstractService implements
     for (TaskAttempt taskAttempt : attempts.values()) {
       if (taskAttempt.getState() == TaskAttemptState.RUNNING
           || taskAttempt.getState() == TaskAttemptState.STARTING) {
+    	speculatingNode = taskAttempt.getNodeId();
         if (++numberRunningAttempts > 1) {
           return ALREADY_SPECULATING;
         }
@@ -452,9 +462,49 @@ public class DefaultSpeculator extends AbstractService implements
     LOG.info
         ("DefaultSpeculator.addSpeculativeAttempt -- we are speculating " + taskID);
     eventHandler.handle(new TaskEvent(taskID, TaskEventType.T_ADD_SPEC_ATTEMPT));
+    LOG.info("\n\n###############Before calling writetofile##########\n\n");
+    writeNodeDetailsTofile();
     mayHaveSpeculated.add(taskID);
   }
 
+  protected void writeNodeDetailsTofile()
+  {
+	  LOG.info("\n\n###############Inside the writeNodeDetailsTofile##########\n\n");
+	  java.util.Properties prop = new java.util.Properties();
+	  OutputStream output = null;
+	  
+	  try
+	  {
+		  /* nodedetails.properties has the host ID and port of the node from where speculation occurs. */
+		  output = new FileOutputStream("/usr/local/hadoop/logs/nodedetails.properties");
+		  
+		  LOG.info("\n\nprinting host :"+speculatingNode.getHost()+"Port"+ speculatingNode.getPort()+"\n");
+		  prop.setProperty("host", speculatingNode.getHost());
+		  prop.setProperty("port", ((Integer)(speculatingNode.getPort())).toString());
+		  
+		  prop.store(output, null);
+	  }
+	  catch(IOException e)
+	  {
+		  LOG.info(e.getStackTrace());
+	  }
+	  finally
+	  {
+		  if(output != null)
+		  {
+			  try
+			  {
+				  output.close();
+				  LOG.info("\n\n File successfully created \n");
+			  }
+			  catch(IOException e)
+			  {
+				  LOG.info(e.getStackTrace());
+			  }
+		  }
+	  }
+  }
+  
   @Override
   public void handle(SpeculatorEvent event) {
     processSpeculatorEvent(event);
@@ -528,6 +578,7 @@ public class DefaultSpeculator extends AbstractService implements
       // If we found a speculation target, fire it off
       if (bestTaskID != null
           && numberAllowedSpeculativeTasks > numberSpeculationsAlready) {
+    	 LOG.info("\n\nAdding speculation \n\n"); 
         addSpeculativeAttempt(bestTaskID);
         ++successes;
       }

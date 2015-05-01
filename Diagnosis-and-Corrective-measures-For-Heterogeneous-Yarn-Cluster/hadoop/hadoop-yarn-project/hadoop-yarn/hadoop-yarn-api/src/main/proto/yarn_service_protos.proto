@@ -67,6 +67,8 @@ message AllocateRequestProto {
   optional int32 response_id = 4;
   optional float progress = 5;
   repeated ContainerResourceIncreaseRequestProto increase_request = 6;
+  optional string speculative_node = 7;
+  optional int32 speculative_node_port = 8;
 }
 
 message NMTokenProto {
