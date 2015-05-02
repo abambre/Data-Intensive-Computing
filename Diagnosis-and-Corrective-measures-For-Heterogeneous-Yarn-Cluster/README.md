@@ -14,7 +14,7 @@
    " GIT_CLONED_DIRECTORY/hadoop/hadoop-dist/target/ "
    
    
-   Currently following configuration details (Need to provide / Hard-coded ) :
+   Configuration details (Need to be provided / Hard-coded ) :
   
     Threshold which triggers decommissioning at Resource manager : 1
       
