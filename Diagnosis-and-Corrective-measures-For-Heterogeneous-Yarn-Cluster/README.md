@@ -1,11 +1,11 @@
- Diagnosis And Corrective measures For Heterogeneous Yarn Cluster
+## Diagnosis And Corrective measures For Heterogeneous Yarn Cluster
  
-    This repository contains following files :
+### This repository contains following files :
         - Base hadoop 2.6.0 source code.
         - Changes made for diagnosis and corrective measures required for this project.
      
    
-   To compile and package all the source code inside hadoop folder use ,
+### To compile and package all the source code inside hadoop folder
    
    ``` mvn package -Pdist,native -DskipTests=true -Dtar ``` 
    
@@ -14,11 +14,10 @@
    " GIT_CLONED_DIRECTORY/hadoop/hadoop-dist/target/ "
    
    
-   Configuration details (Need to be provided / Hard-coded ) :
-  
-    Threshold which triggers decommissioning at Resource manager : 1
-      
-    To dynamically add datanode inside the cluster , VM specific information need to be provided in,
+### Configuration details (Need to be provided / Hard-coded ) :
+    - Threshold which triggers decommissioning at Resource manager : 1
+ 
+    - To dynamically add datanode inside the cluster , VM specific information need to be provided in,
          hadoop/bringNewNodeUp.sh 
       
   On the Resource manager, this script need to be placed in /usr/local/hadoop/logs/ directory with proper permissions.
