@@ -21,4 +21,4 @@
     To dynamically add datanode inside the cluster , VM specific information need to be provided in,
          hadoop/bringNewNodeUp.sh 
       
-  On Resource manager, this script need to be placed in /usr/local/hadoop/logs/ directory with proper permissions.
+  On the Resource manager, this script need to be placed in /usr/local/hadoop/logs/ directory with proper permissions.
